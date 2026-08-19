@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SYW — Show Your Work</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<!--
+  ============================================================
+  SETUP — read this before deploying
+  ============================================================
+  This page needs ONE free thing to make everyone's clock-in log
+  visible to everyone, on any device: a Firebase project.
+
+  1. Go to https://console.firebase.google.com → "Add project"
+     (name it anything, e.g. "syw-tracker"). Skip Google Analytics.
+  2. In the project, click "Build" → "Firestore Database" → "Create
+     database" → Start in TEST MODE (fine for a small trusted group).
+  3. Click the gear icon → "Project settings" → scroll to "Your apps"
+     → click the </> (web) icon → register the app (no hosting needed).
+  4. Copy the firebaseConfig object it gives you and paste it into
+     FIREBASE_CONFIG below, replacing the placeholder.
+  5. Save, push to GitHub, deploy to Vercel as usual. Done — every
+     member who opens the link, on any device, sees the same live log.
+
+  Test mode Firestore rules expire after 30 days. Before then, go to
+  Firestore → Rules and set them to stay open to your group, e.g.:
+
+    rules_version = '2';
+    service cloud.firestore {
+      match /databases/{database}/documents {
+        match /{document=**} {
+          allow read, write: if true;
+        }
+      }
+    }
+
+  (This means anyone with the link can read/write — fine for a small
+  trusted community, not meant for the public internet.)
+  ============================================================
+-->
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<style>
+  :root{
+    --black:#0a0a0a;
+    --panel:#141414;
+    --panel-2:#1b1b1b;
+    --yellow:#ffd359;
+    --paper:#f6f2e9;
+    --white:#f2f2f0;
+    --gray:#8f8c86;
+    --line:rgba(255,211,89,0.14);
+    --green:#4fd482;
+    --red:#ff6a5c;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--black);
+    color:var(--white);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,.display{
+    font-family:'Archivo Black',sans-serif;
+    text-transform:uppercase;
+    letter-spacing:0.01em;
+    line-height:1.05;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+  a{color:inherit;}
+  .wrap{max-width:960px;margin:0 auto;padding:0 24px;}
+
+  /* NAV */
+  nav{
+    position:sticky;top:0;z-index:50;
+    background:rgba(10,10,10,0.92);
+    backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);
+  }
+  .navrow{
+    max-width:960px;margin:0 auto;padding:16px 24px;
+    display:flex;align-items:center;justify-content:space-between;
+    gap:16px;flex-wrap:wrap;
+  }
+  .logo{font-family:'Archivo Black',sans-serif;font-size:20px;letter-spacing:0.02em;}
+  .logo span{color:var(--yellow);}
+  .tabs{display:flex;gap:4px;flex-wrap:wrap;}
+  .tab-btn{
+    background:none;border:1px solid transparent;color:var(--gray);
+    font-family:'Inter',sans-serif;font-weight:600;font-size:13px;
+    text-transform:uppercase;letter-spacing:0.04em;
+    padding:8px 14px;border-radius:100px;cursor:pointer;
+    transition:all .15s ease;
+  }
+  .tab-btn:hover{color:var(--white);}
+  .tab-btn.active{background:var(--yellow);color:var(--black);}
+
+  section.view{display:none;padding:56px 0 90px;}
+  section.view.active{display:block;animation:fadein .25s ease;}
+  @keyframes fadein{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+
+  /* HERO */
+  .hero{padding:40px 0 20px;border-bottom:1px solid var(--line);margin-bottom:40px;}
+  .eyebrow{color:var(--yellow);font-size:12px;letter-spacing:0.14em;text-transform:uppercase;font-weight:700;margin-bottom:14px;}
+  .hero h1{font-size:clamp(40px,7vw,68px);margin:0 0 12px;}
+  .hero p.sub{color:var(--gray);font-size:17px;max-width:520px;margin:0 0 32px;}
+
+  /* signature clock widget */
+  .clockcard{
+    display:flex;align-items:center;gap:28px;flex-wrap:wrap;
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    padding:24px 28px;
+  }
+  .clockface{width:96px;height:96px;flex:none;}
+  .clockstatus .label{font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:var(--gray);margin-bottom:4px;}
+  .clockstatus .time{font-family:'JetBrains Mono',monospace;font-size:30px;font-weight:700;}
+  .clockstatus .msg{font-size:14px;margin-top:6px;font-weight:600;}
+  .msg.ok{color:var(--green);}
+  .msg.warn{color:var(--red);}
+
+  /* generic cards */
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:24px;margin-bottom:20px;
+  }
+  .card h3{font-size:18px;margin:0 0 10px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:640px){.grid2{grid-template-columns:1fr;}}
+  ul.rules{margin:0;padding-left:18px;color:var(--white);}
+  ul.rules li{margin-bottom:8px;color:#d8d5cd;}
+  .points-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed var(--line);font-size:14px;}
+  .points-row:last-child{border-bottom:none;}
+  .points-row b{color:var(--yellow);font-family:'JetBrains Mono',monospace;}
+
+  /* forms */
+  label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray);margin:16px 0 6px;font-weight:700;}
+  label:first-child{margin-top:0;}
+  input[type=text],textarea{
+    width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;
+    color:var(--white);font-family:'Inter',sans-serif;font-size:14px;padding:11px 13px;
+    resize:vertical;
+  }
+  input[type=text]:focus,textarea:focus{outline:none;border-color:var(--yellow);}
+  button.primary{
+    background:var(--yellow);color:var(--black);border:none;border-radius:100px;
+    font-weight:700;font-size:14px;padding:12px 24px;cursor:pointer;margin-top:20px;
+    text-transform:uppercase;letter-spacing:0.04em;
+  }
+  button.primary:hover{filter:brightness(1.06);}
+  button.primary:disabled{background:#3a3a3a;color:#888;cursor:not-allowed;}
+  button.ghost{
+    background:none;border:1px solid var(--line);color:var(--gray);border-radius:100px;
+    font-size:12px;padding:6px 14px;cursor:pointer;
+  }
+  button.ghost:hover{color:var(--white);border-color:var(--yellow);}
+
+  .whoami{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:24px;}
+  .whoami .greet{font-size:15px;color:var(--gray);}
+  .whoami .greet b{color:var(--white);}
+
+  .slot-status{
+    display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;
+    padding:4px 10px;border-radius:100px;text-transform:uppercase;letter-spacing:0.04em;
+  }
+  .slot-status.done{background:rgba(79,212,130,0.14);color:var(--green);}
+  .slot-status.open{background:rgba(255,211,89,0.14);color:var(--yellow);}
+
+  /* log */
+  .logfilter{display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap;}
+  select{
+    background:var(--panel-2);border:1px solid var(--line);color:var(--white);
+    border-radius:8px;padding:9px 12px;font-family:'Inter',sans-serif;font-size:13px;
+  }
+  .entry{
+    background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--yellow);
+    border-radius:10px;padding:16px 18px;margin-bottom:12px;
+  }
+  .entry.late{border-left-color:var(--red);}
+  .entry-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
+  .entry-name{font-weight:700;font-size:15px;}
+  .entry-meta{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--gray);}
+  .badge{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:3px 9px;border-radius:100px;}
+  .badge.ontime{background:rgba(79,212,130,0.14);color:var(--green);}
+  .badge.late{background:rgba(255,106,92,0.14);color:var(--red);}
+  .entry-body{font-size:13.5px;color:#d8d5cd;line-height:1.5;}
+  .entry-body div{margin-bottom:3px;}
+  .entry-body b{color:var(--white);}
+  .entry-points{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--yellow);font-size:14px;white-space:nowrap;}
+
+  /* leaderboard */
+  .lb-row{
+    display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid var(--line);
+  }
+  .lb-rank{font-family:'Archivo Black',sans-serif;font-size:20px;color:var(--gray);width:32px;flex:none;}
+  .lb-rank.top{color:var(--yellow);}
+  .lb-name{flex:1;font-weight:700;font-size:15px;}
+  .lb-bar-wrap{flex:2;background:var(--panel-2);border-radius:100px;height:8px;overflow:hidden;}
+  .lb-bar{height:100%;background:var(--yellow);border-radius:100px;}
+  .lb-pts{font-family:'JetBrains Mono',monospace;font-weight:700;width:70px;text-align:right;flex:none;}
+  .empty{color:var(--gray);font-size:14px;padding:20px 0;}
+
+  .setup-banner{
+    background:#2a1c0a;border:1px solid #6b4a12;color:#ffd98f;
+    border-radius:10px;padding:16px 20px;font-size:13.5px;margin-bottom:30px;line-height:1.6;
+  }
+  .setup-banner b{color:var(--yellow);}
+  footer{border-top:1px solid var(--line);padding:30px 0;text-align:center;color:var(--gray);font-size:12px;}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="navrow">
+    <div class="logo">SYW<span>.</span></div>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="home">Home</button>
+      <button class="tab-btn" data-tab="clockin">Clock In</button>
+      <button class="tab-btn" data-tab="log">Community Log</button>
+      <button class="tab-btn" data-tab="leaderboard">Leaderboard</button>
+    </div>
+  </div>
+</nav>
+
+<div class="wrap">
+  <div id="setupBanner" style="display:none;" class="setup-banner">
+    ⚠️ <b>Firebase isn't connected yet.</b> This log currently only lives in your own browser and won't sync between members. Open this file, find <b>FIREBASE_CONFIG</b> near the top of the &lt;script&gt;, and paste in your Firebase project's config. Setup steps are in the HTML comment right above it.
+  </div>
+</div>
+
+<!-- ================= HOME ================= -->
+<section id="home" class="view active">
+  <div class="wrap">
+    <div class="hero">
+      <div class="eyebrow">Dare to Defy the Norms</div>
+      <h1>Show your work.<br>Every day. On record.</h1>
+      <p class="sub">SYW doesn't reward applause — it rewards consistency with visibility. Clock in, show your priorities, and let the whole community watch you compound.</p>
+
+      <div class="clockcard">
+        <svg class="clockface" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="46" fill="var(--panel-2)" stroke="var(--line)" stroke-width="2"/>
+          <path id="lateWedgeAM" d="M50,50 L50,8 A42,42 0 0,1 76,20 Z" fill="rgba(255,106,92,0.18)"/>
+          <g stroke="var(--gray)" stroke-width="1.5">
+            <line x1="50" y1="8" x2="50" y2="14"/>
+            <line x1="50" y1="86" x2="50" y2="92"/>
+            <line x1="8" y1="50" x2="14" y2="50"/>
+            <line x1="86" y1="50" x2="92" y2="50"/>
+          </g>
+          <line id="hourHand" x1="50" y1="50" x2="50" y2="28" stroke="var(--yellow)" stroke-width="3" stroke-linecap="round"/>
+          <line id="minHand" x1="50" y1="50" x2="50" y2="20" stroke="var(--white)" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="50" cy="50" r="3" fill="var(--yellow)"/>
+        </svg>
+        <div class="clockstatus">
+          <div class="label">Right now</div>
+          <div class="time mono" id="liveTime">--:--:--</div>
+          <div class="msg" id="liveMsg">checking clock-in window…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>🏆 The SYW Monthly Winner</h3>
+      <p style="color:#d8d5cd;font-size:14.5px;line-height:1.6;">The overall winner is determined primarily by daily participation points accumulated through the month. The winner gets the platform to be primary speaker/feature for the next General Session and subsequent events — because SYW doesn't just clap for people, it hands the mic to whoever showed up the most. The moderator can be appointed separately.</p>
+    </div>
+
+    <div class="card">
+      <h3>🎯 The SYW Monthly Challenge</h3>
+      <p style="color:#d8d5cd;font-size:14.5px;">Every month, members vote on one challenge. It should be <b style="color:var(--yellow);">specific + measurable + slightly uncomfortable + fun.</b> The point isn't to overwhelm — it's to collectively do something outside our normal routine.</p>
+      <ul class="rules" style="margin-top:14px;">
+        <li>Publish for 7 consecutive days</li>
+        <li>Pitch three potential clients</li>
+        <li>Learn one new skill and teach it</li>
+        <li>Apply for five opportunities</li>
+        <li>Write 500 words for five days</li>
+        <li>Record and publish your first video</li>
+        <li>Reach out to five people</li>
+        <li>Complete a project you've been postponing</li>
+        <li>Read 20 pages daily for a week</li>
+      </ul>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>☀️ Morning Clock-In — 5 pts</h3>
+        <div class="points-row"><span>Clock in before 8:10am</span><b>2 pts</b></div>
+        <div class="points-row"><span>Top 2+ priorities listed</span><b>2 pts</b></div>
+        <div class="points-row"><span>One habit you'll practice</span><b>1 pt</b></div>
+      </div>
+      <div class="card">
+        <h3>🌙 Evening Clock-In — 5 pts</h3>
+        <div class="points-row"><span>Clock in before 8:10pm</span><b>2 pts</b></div>
+        <div class="points-row"><span>What you accomplished (2+)</span><b>2 pts</b></div>
+        <div class="points-row"><span>Lesson learned</span><b>1 pt</b></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CLOCK IN ================= -->
+<section id="clockin" class="view">
+  <div class="wrap">
+    <div id="identityBlock"></div>
+    <div id="clockinForms"></div>
+  </div>
+</section>
+
+<!-- ================= COMMUNITY LOG ================= -->
+<section id="log" class="view">
+  <div class="wrap">
+    <h2 style="margin-top:0;">Community Log</h2>
+    <p style="color:var(--gray);font-size:14px;margin-top:-6px;">Every clock-in, from everyone, in real time.</p>
+    <div class="logfilter">
+      <select id="logFilter"><option value="">All members</option></select>
+    </div>
+    <div id="logList"></div>
+  </div>
+</section>
+
+<!-- ================= LEADERBOARD ================= -->
+<section id="leaderboard" class="view">
+  <div class="wrap">
+    <h2 style="margin-top:0;">Leaderboard — This Week</h2>
+    <p style="color:var(--gray);font-size:14px;margin-top:-6px;" id="weekRangeLabel"></p>
+    <div class="card" id="lbCard"></div>
+  </div>
+</section>
+
+<footer>SYW — Dare to Defy the Norms. Built for the community, visible to the community.</footer>
+
+<script>
+/* ============================================================
+   FIREBASE_CONFIG — replace this with YOUR project's config
+   (see setup instructions in the HTML comment near the top)
+   ============================================================ */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyApDHhywYRNjg496sxwff79kwuaDPr52bQ",
+  authDomain: "show-your-work-377c8.firebaseapp.com",
+  projectId: "show-your-work-377c8",
+  storageBucket: "show-your-work-377c8.firebasestorage.app",
+  messagingSenderId: "546273498755",
+  appId: "1:546273498755:web:e0376cba379a7507392db6"
+};
+
+const isConfigured = FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith("PASTE_");
+let db = null;
+
+if (isConfigured) {
+  firebase.initializeApp(FIREBASE_CONFIG);
+  db = firebase.firestore();
+} else {
+  document.getElementById('setupBanner').style.display = 'block';
+}
+
+/* ---------- tab switching ---------- */
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+  });
+});
+
+/* ---------- live clock + hero clock face ---------- */
+function pad(n){return n.toString().padStart(2,'0');}
+function updateClock(){
+  const now = new Date();
+  document.getElementById('liveTime').textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  const h = now.getHours(), m = now.getMinutes();
+  const hourDeg = (h % 12) * 30 + m * 0.5;
+  const minDeg = m * 6;
+  document.getElementById('hourHand').setAttribute('transform', `rotate(${hourDeg} 50 50)`);
+  document.getElementById('minHand').setAttribute('transform', `rotate(${minDeg} 50 50)`);
+
+  const msgEl = document.getElementById('liveMsg');
+  const mins = h*60+m;
+  const amCut = 8*60+10, pmCut = 20*60+10;
+  if (h < 8 || (h===8 && m<10)) {
+    msgEl.textContent = `Morning window open — ${amCut-mins} min left before you're late`;
+    msgEl.className = 'msg ok';
+  } else if (h===8 && m>=10 || (h>8 && h<20) || (h===20 && m<10)) {
+    if (h<20 || (h===20&&m<10)) {
+      msgEl.textContent = mins < pmCut ? `Evening window open — ${pmCut-mins} min left before you're late` : 'Evening: late zone';
+      msgEl.className = mins < pmCut ? 'msg ok' : 'msg warn';
+    }
+  } else {
+    msgEl.textContent = 'Outside both clock-in windows';
+    msgEl.className = 'msg warn';
+  }
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+/* ---------- identity ---------- */
+function getMe(){ return localStorage.getItem('syw_name') || ''; }
+function setMe(name){ localStorage.setItem('syw_name', name); }
+function clearMe(){ localStorage.removeItem('syw_name'); }
+
+function renderIdentity(){
+  const me = getMe();
+  const block = document.getElementById('identityBlock');
+  if (!me) {
+    block.innerHTML = `
+      <div class="card">
+        <h3>Who are you?</h3>
+        <p style="color:var(--gray);font-size:13.5px;">First time here — create your log. Your name stays consistent so the community can track your streak.</p>
+        <label>Your name</label>
+        <input type="text" id="nameInput" placeholder="e.g. Favour Osagie">
+        <button class="primary" id="saveNameBtn">Create my log</button>
+      </div>`;
+    document.getElementById('saveNameBtn').onclick = ()=>{
+      const v = document.getElementById('nameInput').value.trim();
+      if(!v) return;
+      setMe(v);
+      if(db) db.collection('members').doc(v.toLowerCase()).set({name:v, joinedAt: firebase.firestore.FieldValue.serverTimestamp()}, {merge:true});
+      renderIdentity();
+      renderClockinForms();
+    };
+  } else {
+    block.innerHTML = `
+      <div class="whoami">
+        <div class="greet">Clocking in as <b>${escapeHtml(me)}</b></div>
+        <button class="ghost" id="switchBtn">Not you? Switch</button>
+      </div>`;
+    document.getElementById('switchBtn').onclick = ()=>{ clearMe(); renderIdentity(); renderClockinForms(); };
+  }
+}
+
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function todayStr(){
+  const n = new Date();
+  return `${n.getFullYear()}-${pad(n.getMonth()+1)}-${pad(n.getDate())}`;
+}
+
+function isLateNow(type){
+  const n = new Date();
+  const mins = n.getHours()*60+n.getMinutes();
+  const cutoff = type==='morning' ? (8*60+10) : (20*60+10);
+  return mins > cutoff;
+}
+
+/* ---------- clock-in forms ---------- */
+let todaysCheckinsForMe = {morning:false, evening:false};
+
+function renderClockinForms(){
+  const container = document.getElementById('clockinForms');
+  const me = getMe();
+  if (!me) { container.innerHTML=''; return; }
+
+  container.innerHTML = `
+    <div class="grid2">
+      <div class="card" id="amCard">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3 style="margin:0;">☀️ Morning Clock-In</h3>
+          <span class="slot-status open" id="amStatus">Open</span>
+        </div>
+        <div id="amFormWrap">
+          <label>Top 2+ priorities today</label>
+          <textarea id="amPriorities" rows="3" placeholder="1. ...&#10;2. ..."></textarea>
+          <label>One habit I'll practice</label>
+          <input type="text" id="amHabit" placeholder="e.g. 20 pages of reading">
+          <button class="primary" id="amSubmit">Clock In — Morning</button>
+        </div>
+      </div>
+      <div class="card" id="pmCard">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3 style="margin:0;">🌙 Evening Clock-In</h3>
+          <span class="slot-status open" id="pmStatus">Open</span>
+        </div>
+        <div id="pmFormWrap">
+          <label>What I accomplished today (2+)</label>
+          <textarea id="pmAccomplished" rows="3" placeholder="1. ...&#10;2. ..."></textarea>
+          <label>Lesson learned</label>
+          <input type="text" id="pmLesson" placeholder="One thing today taught you">
+          <button class="primary" id="pmSubmit">Clock In — Evening</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('amSubmit').onclick = ()=>submitCheckin('morning');
+  document.getElementById('pmSubmit').onclick = ()=>submitCheckin('evening');
+  refreshTodayStatus();
+}
+
+function refreshTodayStatus(){
+  const me = getMe();
+  if (!me || !db) return;
+  const date = todayStr();
+  db.collection('checkins')
+    .where('memberKey','==', me.toLowerCase())
+    .where('date','==', date)
+    .get().then(snap=>{
+      todaysCheckinsForMe = {morning:false, evening:false};
+      snap.forEach(doc=>{ todaysCheckinsForMe[doc.data().type] = true; });
+      lockSlot('am','morning'); lockSlot('pm','evening');
+    }).catch(()=>{});
+}
+
+function lockSlot(prefix, type){
+  const done = todaysCheckinsForMe[type];
+  const statusEl = document.getElementById(prefix+'Status');
+  const submitBtn = document.getElementById(prefix+'Submit');
+  if (!statusEl) return;
+  if (done) {
+    statusEl.textContent = '✓ Done';
+    statusEl.className = 'slot-status done';
+    if(submitBtn){ submitBtn.disabled = true; submitBtn.textContent = 'Already clocked in'; }
+  }
+}
+
+function submitCheckin(type){
+  const me = getMe();
+  if(!me || !db) { if(!db) alert('Connect Firebase first — see the setup banner.'); return; }
+  const late = isLateNow(type);
+  let fields = {}, contentPts = 0;
+
+  if (type==='morning') {
+    const priorities = document.getElementById('amPriorities').value.trim();
+    const habit = document.getElementById('amHabit').value.trim();
+    if (priorities) contentPts += 2;
+    if (habit) contentPts += 1;
+    fields = { priorities, habit };
+  } else {
+    const accomplished = document.getElementById('pmAccomplished').value.trim();
+    const lesson = document.getElementById('pmLesson').value.trim();
+    if (accomplished) contentPts += 2;
+    if (lesson) contentPts += 1;
+    fields = { accomplished, lesson };
+  }
+
+  const points = contentPts + (late ? 0 : 2);
+
+  db.collection('checkins').add({
+    memberKey: me.toLowerCase(),
+    memberName: me,
+    type,
+    date: todayStr(),
+    late,
+    points,
+    fields,
+    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+    clientTime: new Date().toISOString()
+  }).then(()=>{
+    refreshTodayStatus();
+  }).catch(err=>alert('Could not save: '+err.message));
+}
+
+/* ---------- community log + leaderboard (live) ---------- */
+let allCheckins = [];
+const knownMembers = new Set();
+
+function subscribeCheckins(){
+  if (!db) return;
+  db.collection('checkins').orderBy('timestamp','desc').limit(500)
+    .onSnapshot(snap=>{
+      allCheckins = [];
+      snap.forEach(doc=>{ allCheckins.push(doc.data()); knownMembers.add(doc.data().memberName); });
+      updateFilterOptions();
+      renderLog();
+      renderLeaderboard();
+      refreshTodayStatus();
+    });
+}
+
+function updateFilterOptions(){
+  const sel = document.getElementById('logFilter');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All members</option>' +
+    [...knownMembers].sort().map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+  sel.value = current;
+}
+document.getElementById('logFilter').addEventListener('change', renderLog);
+
+function fmtTime(c){
+  if (c.clientTime) {
+    const d = new Date(c.clientTime);
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  return '';
+}
+
+function renderLog(){
+  const filter = document.getElementById('logFilter').value;
+  const list = document.getElementById('logList');
+  const rows = allCheckins.filter(c => !filter || c.memberName===filter);
+  if (!rows.length) { list.innerHTML = '<div class="empty">No clock-ins yet. Be the first.</div>'; return; }
+
+  list.innerHTML = rows.map(c=>{
+    const f = c.fields||{};
+    const body = c.type==='morning'
+      ? `<div><b>Priorities:</b> ${escapeHtml(f.priorities||'—')}</div><div><b>Habit:</b> ${escapeHtml(f.habit||'—')}</div>`
+      : `<div><b>Accomplished:</b> ${escapeHtml(f.accomplished||'—')}</div><div><b>Lesson:</b> ${escapeHtml(f.lesson||'—')}</div>`;
+    return `
+      <div class="entry ${c.late?'late':''}">
+        <div class="entry-top">
+          <div>
+            <span class="entry-name">${escapeHtml(c.memberName)}</span>
+            <span class="entry-meta"> · ${c.type==='morning'?'AM':'PM'} · ${fmtTime(c)} · ${escapeHtml(c.date)}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="badge ${c.late?'late':'ontime'}">${c.late?'Late':'On time'}</span>
+            <span class="entry-points">+${c.points} pts</span>
+          </div>
+        </div>
+        <div class="entry-body">${body}</div>
+      </div>`;
+  }).join('');
+}
+
+function startOfWeek(){
+  const n = new Date();
+  const day = (n.getDay()+6)%7; // Monday=0
+  const monday = new Date(n);
+  monday.setDate(n.getDate()-day);
+  monday.setHours(0,0,0,0);
+  return monday;
+}
+
+function renderLeaderboard(){
+  const monday = startOfWeek();
+  document.getElementById('weekRangeLabel').textContent =
+    `Since Monday, ${monday.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
+
+  const totals = {};
+  allCheckins.forEach(c=>{
+    if (!c.clientTime) return;
+    const d = new Date(c.clientTime);
+    if (d < monday) return;
+    totals[c.memberName] = (totals[c.memberName]||0) + c.points;
+  });
+
+  const rows = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
+  const card = document.getElementById('lbCard');
+  if (!rows.length) { card.innerHTML = '<div class="empty">No points logged this week yet.</div>'; return; }
+  const max = rows[0][1] || 1;
+
+  card.innerHTML = rows.map(([name,pts],i)=>`
+    <div class="lb-row">
+      <div class="lb-rank ${i===0?'top':''}">${i+1}</div>
+      <div class="lb-name">${escapeHtml(name)}</div>
+      <div class="lb-bar-wrap"><div class="lb-bar" style="width:${(pts/max)*100}%"></div></div>
+      <div class="lb-pts">${pts} pts</div>
+    </div>`).join('');
+}
+
+/* ---------- init ---------- */
+renderIdentity();
+renderClockinForms();
+if (db) subscribeCheckins();
+</script>
+
+</body>
+</html>
