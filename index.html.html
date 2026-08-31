@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SYW — Show Your Work</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<!--
+  ============================================================
+  SETUP — read this before deploying
+  ============================================================
+  This page needs ONE free thing to make everyone's clock-in log
+  visible to everyone, on any device: a Firebase project.
+
+  1. Go to https://console.firebase.google.com → "Add project"
+     (name it anything, e.g. "syw-tracker"). Skip Google Analytics.
+  2. In the project, click "Build" → "Firestore Database" → "Create
+     database" → Start in TEST MODE (fine for a small trusted group).
+  3. Click the gear icon → "Project settings" → scroll to "Your apps"
+     → click the </> (web) icon → register the app (no hosting needed).
+  4. Copy the firebaseConfig object it gives you and paste it into
+     FIREBASE_CONFIG below, replacing the placeholder.
+  5. Save, push to GitHub, deploy to Vercel as usual. Done — every
+     member who opens the link, on any device, sees the same live log.
+
+  Test mode Firestore rules expire after 30 days. Before then, go to
+  Firestore → Rules and set them to stay open to your group, e.g.:
+
+    rules_version = '2';
+    service cloud.firestore {
+      match /databases/{database}/documents {
+        match /{document=**} {
+          allow read, write: if true;
+        }
+      }
+    }
+
+  (This means anyone with the link can read/write — fine for a small
+  trusted community, not meant for the public internet.)
+  ============================================================
+-->
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
+<style>
+  :root{
+    --black:#0a0a0a;
+    --panel:#141414;
+    --panel-2:#1b1b1b;
+    --yellow:#ffd359;
+    --paper:#f6f2e9;
+    --white:#f2f2f0;
+    --gray:#8f8c86;
+    --line:rgba(255,211,89,0.14);
+    --green:#4fd482;
+    --red:#ff6a5c;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--black);
+    color:var(--white);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,.display{
+    font-family:'Archivo Black',sans-serif;
+    text-transform:uppercase;
+    letter-spacing:0.01em;
+    line-height:1.05;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+  a{color:inherit;}
+  .wrap{max-width:960px;margin:0 auto;padding:0 24px;}
+
+  /* NAV */
+  nav{
+    position:sticky;top:0;z-index:50;
+    background:rgba(10,10,10,0.92);
+    backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);
+  }
+  .navrow{
+    max-width:960px;margin:0 auto;padding:16px 24px;
+    display:flex;align-items:center;justify-content:space-between;
+    gap:16px;flex-wrap:wrap;
+  }
+  .logo{font-family:'Archivo Black',sans-serif;font-size:20px;letter-spacing:0.02em;}
+  .logo span{color:var(--yellow);}
+  .tabs{display:flex;gap:4px;flex-wrap:wrap;}
+  .tab-btn{
+    background:none;border:1px solid transparent;color:var(--gray);
+    font-family:'Inter',sans-serif;font-weight:600;font-size:13px;
+    text-transform:uppercase;letter-spacing:0.04em;
+    padding:8px 14px;border-radius:100px;cursor:pointer;
+    transition:all .15s ease;
+  }
+  .tab-btn:hover{color:var(--white);}
+  .tab-btn.active{background:var(--yellow);color:var(--black);}
+
+  section.view{display:none;padding:56px 0 90px;}
+  section.view.active{display:block;animation:fadein .25s ease;}
+  @keyframes fadein{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+
+  /* HERO */
+  .hero{padding:40px 0 20px;border-bottom:1px solid var(--line);margin-bottom:40px;}
+  .eyebrow{color:var(--yellow);font-size:12px;letter-spacing:0.14em;text-transform:uppercase;font-weight:700;margin-bottom:14px;}
+  .hero h1{font-size:clamp(40px,7vw,68px);margin:0 0 12px;}
+  .hero p.sub{color:var(--gray);font-size:17px;max-width:520px;margin:0 0 32px;}
+
+  /* signature clock widget */
+  .clockcard{
+    display:flex;align-items:center;gap:28px;flex-wrap:wrap;
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    padding:24px 28px;
+  }
+  .clockface{width:96px;height:96px;flex:none;}
+  .clockstatus .label{font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:var(--gray);margin-bottom:4px;}
+  .clockstatus .time{font-family:'JetBrains Mono',monospace;font-size:30px;font-weight:700;}
+  .clockstatus .msg{font-size:14px;margin-top:6px;font-weight:600;}
+  .msg.ok{color:var(--green);}
+  .msg.warn{color:var(--red);}
+
+  /* generic cards */
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:24px;margin-bottom:20px;
+  }
+  .card h3{font-size:18px;margin:0 0 10px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:640px){.grid2{grid-template-columns:1fr;}}
+  ul.rules{margin:0;padding-left:18px;color:var(--white);}
+  ul.rules li{margin-bottom:8px;color:#d8d5cd;}
+  .points-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed var(--line);font-size:14px;}
+  .points-row:last-child{border-bottom:none;}
+  .points-row b{color:var(--yellow);font-family:'JetBrains Mono',monospace;}
+
+  /* forms */
+  label{display:block;font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray);margin:16px 0 6px;font-weight:700;}
+  label:first-child{margin-top:0;}
+  input[type=text],textarea{
+    width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;
+    color:var(--white);font-family:'Inter',sans-serif;font-size:14px;padding:11px 13px;
+    resize:vertical;
+  }
+  input[type=text]:focus,textarea:focus{outline:none;border-color:var(--yellow);}
+  button.primary{
+    background:var(--yellow);color:var(--black);border:none;border-radius:100px;
+    font-weight:700;font-size:14px;padding:12px 24px;cursor:pointer;margin-top:20px;
+    text-transform:uppercase;letter-spacing:0.04em;
+  }
+  button.primary:hover{filter:brightness(1.06);}
+  button.primary:disabled{background:#3a3a3a;color:#888;cursor:not-allowed;}
+  button.ghost{
+    background:none;border:1px solid var(--line);color:var(--gray);border-radius:100px;
+    font-size:12px;padding:6px 14px;cursor:pointer;
+  }
+  button.ghost:hover{color:var(--white);border-color:var(--yellow);}
+
+  .whoami{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:24px;}
+  .whoami .greet{font-size:15px;color:var(--gray);}
+  .whoami .greet b{color:var(--white);}
+
+  .slot-status{
+    display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;
+    padding:4px 10px;border-radius:100px;text-transform:uppercase;letter-spacing:0.04em;
+  }
+  .slot-status.done{background:rgba(79,212,130,0.14);color:var(--green);}
+  .slot-status.open{background:rgba(255,211,89,0.14);color:var(--yellow);}
+
+  /* log */
+  .logfilter{display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap;}
+  select{
+    background:var(--panel-2);border:1px solid var(--line);color:var(--white);
+    border-radius:8px;padding:9px 12px;font-family:'Inter',sans-serif;font-size:13px;
+  }
+  .entry{
+    background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--yellow);
+    border-radius:10px;padding:16px 18px;margin-bottom:12px;
+  }
+  .entry.late{border-left-color:var(--red);}
+  .entry-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
+  .entry-name{font-weight:700;font-size:15px;}
+  .entry-meta{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--gray);}
+  .badge{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:3px 9px;border-radius:100px;}
+  .badge.ontime{background:rgba(79,212,130,0.14);color:var(--green);}
+  .badge.late{background:rgba(255,106,92,0.14);color:var(--red);}
+  .entry-body{font-size:13.5px;color:#d8d5cd;line-height:1.5;}
+  .entry-body div{margin-bottom:3px;}
+  .entry-body b{color:var(--white);}
+  .entry-points{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--yellow);font-size:14px;white-space:nowrap;}
+
+  /* leaderboard */
+  .lb-row{
+    display:flex;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid var(--line);
+  }
+  .lb-rank{font-family:'Archivo Black',sans-serif;font-size:20px;color:var(--gray);width:32px;flex:none;}
+  .lb-rank.top{color:var(--yellow);}
+  .lb-name{flex:1;font-weight:700;font-size:15px;}
+  .lb-bar-wrap{flex:2;background:var(--panel-2);border-radius:100px;height:8px;overflow:hidden;}
+  .lb-bar{height:100%;background:var(--yellow);border-radius:100px;}
+  .lb-pts{font-family:'JetBrains Mono',monospace;font-weight:700;width:70px;text-align:right;flex:none;}
+  .empty{color:var(--gray);font-size:14px;padding:20px 0;}
+
+  .setup-banner{
+    background:#2a1c0a;border:1px solid #6b4a12;color:#ffd98f;
+    border-radius:10px;padding:16px 20px;font-size:13.5px;margin-bottom:30px;line-height:1.6;
+  }
+  .setup-banner b{color:var(--yellow);}
+  footer{border-top:1px solid var(--line);padding:30px 0;text-align:center;color:var(--gray);font-size:12px;}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="navrow">
+    <div class="logo">SYW<span>.</span></div>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="home">Home</button>
+      <button class="tab-btn" data-tab="clockin">Clock In</button>
+      <button class="tab-btn" data-tab="log">Community Log</button>
+      <button class="tab-btn" data-tab="leaderboard">Leaderboard</button>
+    </div>
+  </div>
+</nav>
+
+<div class="wrap">
+  <div id="setupBanner" style="display:none;" class="setup-banner">
+    ⚠️ <b>Firebase isn't connected yet.</b> This log currently only lives in your own browser and won't sync between members. Open this file, find <b>FIREBASE_CONFIG</b> near the top of the &lt;script&gt;, and paste in your Firebase project's config. Setup steps are in the HTML comment right above it.
+  </div>
+</div>
+
+<!-- ================= HOME ================= -->
+<section id="home" class="view active">
+  <div class="wrap">
+    <div class="hero">
+      <div class="eyebrow">Dare to Defy the Norms</div>
+      <h1>Show your work.<br>Every day. On record.</h1>
+      <p class="sub">SYW doesn't reward applause — it rewards consistency with visibility. Clock in, show your priorities, and let the whole community watch you compound.</p>
+
+      <div class="clockcard">
+        <svg class="clockface" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="46" fill="var(--panel-2)" stroke="var(--line)" stroke-width="2"/>
+          <path id="lateWedgeAM" d="M50,50 L50,8 A42,42 0 0,1 76,20 Z" fill="rgba(255,106,92,0.18)"/>
+          <g stroke="var(--gray)" stroke-width="1.5">
+            <line x1="50" y1="8" x2="50" y2="14"/>
+            <line x1="50" y1="86" x2="50" y2="92"/>
+            <line x1="8" y1="50" x2="14" y2="50"/>
+            <line x1="86" y1="50" x2="92" y2="50"/>
+          </g>
+          <line id="hourHand" x1="50" y1="50" x2="50" y2="28" stroke="var(--yellow)" stroke-width="3" stroke-linecap="round"/>
+          <line id="minHand" x1="50" y1="50" x2="50" y2="20" stroke="var(--white)" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="50" cy="50" r="3" fill="var(--yellow)"/>
+        </svg>
+        <div class="clockstatus">
+          <div class="label">Right now</div>
+          <div class="time mono" id="liveTime">--:--:--</div>
+          <div class="msg" id="liveMsg">checking clock-in window…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>🏆 The SYW Monthly Winner</h3>
+      <p style="color:#d8d5cd;font-size:14.5px;line-height:1.6;">The overall winner is determined primarily by daily participation points accumulated through the month. The winner gets the platform to be primary speaker/feature for the next General Session and subsequent events — because SYW doesn't just clap for people, it hands the mic to whoever showed up the most. The moderator can be appointed separately.</p>
+    </div>
+
+    <div class="card">
+      <h3>🎯 The SYW Monthly Challenge</h3>
+      <p style="color:#d8d5cd;font-size:14.5px;">Every month, members vote on one challenge. It should be <b style="color:var(--yellow);">specific + measurable + slightly uncomfortable + fun.</b> The point isn't to overwhelm — it's to collectively do something outside our normal routine.</p>
+      <ul class="rules" style="margin-top:14px;">
+        <li>Publish for 7 consecutive days</li>
+        <li>Pitch three potential clients</li>
+        <li>Learn one new skill and teach it</li>
+        <li>Apply for five opportunities</li>
+        <li>Write 500 words for five days</li>
+        <li>Record and publish your first video</li>
+        <li>Reach out to five people</li>
+        <li>Complete a project you've been postponing</li>
+        <li>Read 20 pages daily for a week</li>
+      </ul>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>☀️ Morning Clock-In — 5 pts</h3>
+        <div class="points-row"><span>Clock in before 8:10am</span><b>2 pts</b></div>
+        <div class="points-row"><span>Top 2+ priorities listed</span><b>2 pts</b></div>
+        <div class="points-row"><span>One habit you'll practice</span><b>1 pt</b></div>
+      </div>
+      <div class="card">
+        <h3>🌙 Evening Clock-In — 5 pts</h3>
+        <div class="points-row"><span>Clock in before 8:10pm</span><b>2 pts</b></div>
+        <div class="points-row"><span>What you accomplished (2+)</span><b>2 pts</b></div>
+        <div class="points-row"><span>Lesson learned</span><b>1 pt</b></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CLOCK IN ================= -->
+<section id="clockin" class="view">
+  <div class="wrap">
+    <div id="identityBlock"></div>
+    <div id="clockinForms"></div>
+  </div>
+</section>
+
+<!-- ================= COMMUNITY LOG ================= -->
+<section id="log" class="view">
+  <div class="wrap">
+    <h2 style="margin-top:0;">Community Log</h2>
+    <p style="color:var(--gray);font-size:14px;margin-top:-6px;">Every clock-in, from everyone, in real time.</p>
+    <div class="logfilter">
+      <select id="logFilter"><option value="">All members</option></select>
+    </div>
+    <div id="logList"></div>
+  </div>
+</section>
+
+<!-- ================= LEADERBOARD ================= -->
+<section id="leaderboard" class="view">
+  <div class="wrap">
+    <h2 style="margin-top:0;">🏆 Monthly Winner(s)</h2>
+    <p style="color:var(--gray);font-size:14px;margin-top:-6px;" id="monthRangeLabel"></p>
+    <div class="card" id="monthCard"></div>
+
+    <h2 style="margin-top:40px;">This Week</h2>
+    <p style="color:var(--gray);font-size:14px;margin-top:-6px;" id="weekRangeLabel"></p>
+    <div class="card" id="lbCard"></div>
+
+    <h2 style="margin-top:40px;">Past Winners</h2>
+    <p style="color:var(--gray);font-size:14px;margin-top:-6px;">Archived automatically when each new month begins.</p>
+    <div class="card" id="pastWinnersList"></div>
+  </div>
+</section>
+
+<footer>SYW — Dare to Defy the Norms. Built for the community, visible to the community.</footer>
+
+<script>
+/* ============================================================
+   FIREBASE_CONFIG — replace this with YOUR project's config
+   (see setup instructions in the HTML comment near the top)
+   ============================================================ */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyApDHhywYRNjg496sxwff79kwuaDPr52bQ",
+  authDomain: "show-your-work-377c8.firebaseapp.com",
+  projectId: "show-your-work-377c8",
+  storageBucket: "show-your-work-377c8.firebasestorage.app",
+  messagingSenderId: "546273498755",
+  appId: "1:546273498755:web:e0376cba379a7507392db6"
+};
+
+const isConfigured = FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith("PASTE_");
+let db = null;
+let auth = null;
+
+if (isConfigured) {
+  firebase.initializeApp(FIREBASE_CONFIG);
+  db = firebase.firestore();
+  auth = firebase.auth();
+} else {
+  document.getElementById('setupBanner').style.display = 'block';
+}
+
+/* ---------- tab switching ---------- */
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+  });
+});
+
+/* ---------- live clock + hero clock face ---------- */
+function pad(n){return n.toString().padStart(2,'0');}
+function updateClock(){
+  const now = new Date();
+  document.getElementById('liveTime').textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  const h = now.getHours(), m = now.getMinutes();
+  const hourDeg = (h % 12) * 30 + m * 0.5;
+  const minDeg = m * 6;
+  document.getElementById('hourHand').setAttribute('transform', `rotate(${hourDeg} 50 50)`);
+  document.getElementById('minHand').setAttribute('transform', `rotate(${minDeg} 50 50)`);
+
+  const msgEl = document.getElementById('liveMsg');
+  const mins = h*60+m;
+  const amCut = 8*60+10, pmCut = 20*60+10;
+  if (now.getDay() === 0) {
+    msgEl.textContent = "Sunday — review day, no clock-ins";
+    msgEl.className = 'msg warn';
+  } else if (h < 8 || (h===8 && m<10)) {
+    msgEl.textContent = `Morning window open — ${amCut-mins} min left before you're late`;
+    msgEl.className = 'msg ok';
+  } else if (h===8 && m>=10 || (h>8 && h<20) || (h===20 && m<10)) {
+    if (h<20 || (h===20&&m<10)) {
+      msgEl.textContent = mins < pmCut ? `Evening window open — ${pmCut-mins} min left before you're late` : 'Evening: late zone';
+      msgEl.className = mins < pmCut ? 'msg ok' : 'msg warn';
+    }
+  } else {
+    msgEl.textContent = 'Outside both clock-in windows';
+    msgEl.className = 'msg warn';
+  }
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+/* ---------- identity (real login, syncs across devices) ---------- */
+let currentUser = null;
+let clockOffsetMs = 0; // difference between this device's clock and Firebase's real server time
+const ADMIN_EMAILS = ['cdtfavourosagie@gmail.com'];
+
+function now(){
+  // Always use this instead of `new Date()` anywhere late/window logic matters —
+  // it corrects for a device's clock being wrong, using Firebase's real server time.
+  return new Date(Date.now() + clockOffsetMs);
+}
+
+function syncServerClock(){
+  if (!db || !currentUser) return Promise.resolve();
+  const ref = db.collection('members').doc(currentUser.uid);
+  const before = Date.now();
+  return ref.set({ clockPing: firebase.firestore.FieldValue.serverTimestamp() }, {merge:true})
+    .then(()=> ref.get({source:'server'}))
+    .then(doc=>{
+      const server = doc.data().clockPing;
+      if (server && server.toMillis) {
+        const roundTrip = Date.now() - before;
+        const serverAtRequest = server.toMillis() - Math.round(roundTrip/2);
+        clockOffsetMs = serverAtRequest - before;
+      }
+    })
+    .catch(()=>{ clockOffsetMs = 0; });
+}
+let myDisplayName = '';
+let authFormMode = 'login'; // 'login' | 'signup'
+
+function renderIdentity(){
+  const block = document.getElementById('identityBlock');
+
+  if (!auth) { block.innerHTML=''; return; }
+
+  if (!currentUser) {
+    const isSignup = authFormMode === 'signup';
+    block.innerHTML = `
+      <div class="card">
+        <h3>${isSignup ? 'Create your account' : 'Log in'}</h3>
+        <p style="color:var(--gray);font-size:13.5px;">${isSignup ? "Your log will follow you to any device you log in on." : "Welcome back — log in to continue your log."}</p>
+        ${isSignup ? `<label>Your name (shown on the log)</label><input type="text" id="authName" placeholder="e.g. Favour Osagie">` : ''}
+        <label>Email</label>
+        <input type="text" id="authEmail" placeholder="you@example.com">
+        <label>Password</label>
+        <input type="password" id="authPassword" placeholder="At least 6 characters">
+        <button class="primary" id="authSubmit">${isSignup ? 'Create account' : 'Log in'}</button>
+        <div id="authError" style="color:var(--red);font-size:13px;margin-top:10px;"></div>
+        <div style="margin-top:16px;font-size:13px;color:var(--gray);">
+          ${isSignup ? "Already have an account?" : "New here?"}
+          <a href="#" id="authToggle" style="color:var(--yellow);text-decoration:underline;">${isSignup ? 'Log in instead' : 'Create an account'}</a>
+        </div>
+      </div>`;
+
+    document.getElementById('authToggle').onclick = (e)=>{ e.preventDefault(); authFormMode = isSignup ? 'login' : 'signup'; renderIdentity(); };
+
+    document.getElementById('authSubmit').onclick = ()=>{
+      const email = document.getElementById('authEmail').value.trim();
+      const pass = document.getElementById('authPassword').value;
+      const errEl = document.getElementById('authError');
+      errEl.textContent = '';
+      if (!email || !pass) { errEl.textContent = 'Fill in both fields.'; return; }
+
+      if (isSignup) {
+        const name = document.getElementById('authName').value.trim();
+        if (!name) { errEl.textContent = 'Enter your name.'; return; }
+        auth.createUserWithEmailAndPassword(email, pass)
+          .then(cred => db.collection('members').doc(cred.user.uid).set({
+            name, email, joinedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }))
+          .catch(err => errEl.textContent = friendlyAuthError(err));
+      } else {
+        auth.signInWithEmailAndPassword(email, pass)
+          .catch(err => errEl.textContent = friendlyAuthError(err));
+      }
+    };
+  } else {
+    block.innerHTML = `
+      <div class="whoami">
+        <div class="greet">Clocking in as <b>${escapeHtml(myDisplayName)}</b></div>
+        <button class="ghost" id="logoutBtn">Log out</button>
+      </div>`;
+    document.getElementById('logoutBtn').onclick = ()=> auth.signOut();
+  }
+}
+
+function friendlyAuthError(err){
+  const map = {
+    'auth/email-already-in-use': 'That email already has an account — try logging in instead.',
+    'auth/invalid-email': 'That email doesn\'t look right.',
+    'auth/weak-password': 'Password needs to be at least 6 characters.',
+    'auth/wrong-password': 'Wrong password — try again.',
+    'auth/user-not-found': 'No account with that email — create one instead.',
+    'auth/invalid-credential': 'Email or password is incorrect.'
+  };
+  return map[err.code] || err.message;
+}
+
+if (auth) {
+  auth.onAuthStateChanged(user => {
+    currentUser = user;
+    if (user) {
+      syncServerClock().then(()=>{
+        db.collection('members').doc(user.uid).get().then(doc=>{
+          myDisplayName = doc.exists ? doc.data().name : (user.email || 'Member');
+          renderIdentity();
+          renderClockinForms();
+          refreshTodayStatus();
+          archivePreviousMonthIfNeeded();
+        });
+      });
+    } else {
+      myDisplayName = '';
+      clockOffsetMs = 0;
+      renderIdentity();
+      renderClockinForms();
+    }
+  });
+}
+
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function todayStr(){
+  const n = now();
+  return `${n.getFullYear()}-${pad(n.getMonth()+1)}-${pad(n.getDate())}`;
+}
+
+function isLateNow(type){
+  const n = now();
+  const mins = n.getHours()*60+n.getMinutes();
+  const cutoff = type==='morning' ? (8*60+10) : (20*60+10);
+  return mins > cutoff;
+}
+
+/* ---------- clock-in forms ---------- */
+let todaysCheckinsForMe = {morning:false, evening:false};
+
+function isSunday(){ return now().getDay() === 0; }
+
+function afterTwoPM(){
+  const n = now();
+  return n.getHours() >= 14;
+}
+
+function renderClockinForms(){
+  const container = document.getElementById('clockinForms');
+  if (!currentUser) { container.innerHTML=''; return; }
+
+  if (isSunday()) {
+    container.innerHTML = `
+      <div class="card" style="text-align:center;padding:40px 24px;">
+        <div style="font-size:32px;margin-bottom:10px;">🛌</div>
+        <h3 style="margin-bottom:10px;">It's Sunday — review day</h3>
+        <p style="color:var(--gray);font-size:14px;max-width:420px;margin:0 auto 20px;">No clock-ins today. Rest, and check where your week landed — scores run Monday through Saturday, out of 60.</p>
+        <button class="ghost" onclick="document.querySelector('[data-tab=leaderboard]').click()">View this week's leaderboard</button>
+      </div>`;
+    return;
+  }
+
+  const eveningOpen = afterTwoPM();
+
+  container.innerHTML = `
+    <div class="grid2">
+      <div class="card" id="amCard">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3 style="margin:0;">☀️ Morning Clock-In</h3>
+          <span class="slot-status open" id="amStatus">Open</span>
+        </div>
+        <div id="amFormWrap">
+          <label>Top 2+ priorities today <span style="text-transform:none;font-weight:400;">(one per line)</span></label>
+          <textarea id="amPriorities" rows="3" placeholder="1. ...&#10;2. ..." oninput="checkFormValid('am')"></textarea>
+          <div id="amHint" style="font-size:11px;color:var(--gray);margin-top:4px;">0 items — add at least 2, one per line</div>
+          <label>One habit I'll practice</label>
+          <input type="text" id="amHabit" placeholder="e.g. 20 pages of reading" oninput="checkFormValid('am')">
+          <button class="primary" id="amSubmit" disabled>Fill in both fields to clock in</button>
+        </div>
+      </div>
+      <div class="card" id="pmCard">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3 style="margin:0;">🌙 Evening Clock-In</h3>
+          <span class="slot-status ${eveningOpen ? 'open' : ''}" id="pmStatus">${eveningOpen ? 'Open' : 'Opens 2:00pm'}</span>
+        </div>
+        <div id="pmFormWrap">
+          ${!eveningOpen ? `<p style="color:var(--gray);font-size:13.5px;">Evening clock-in opens at 2:00pm. Check back then.</p>` : `
+          <label>What I accomplished today (2+) <span style="text-transform:none;font-weight:400;">(one per line)</span></label>
+          <textarea id="pmAccomplished" rows="3" placeholder="1. ...&#10;2. ..." oninput="checkFormValid('pm')"></textarea>
+          <div id="pmHint" style="font-size:11px;color:var(--gray);margin-top:4px;">0 items — add at least 2, one per line</div>
+          <label>Lesson learned</label>
+          <input type="text" id="pmLesson" placeholder="One thing today taught you" oninput="checkFormValid('pm')">
+          <button class="primary" id="pmSubmit" disabled>Fill in both fields to clock in</button>`}
+        </div>
+      </div>
+    </div>`;
+
+  const amBtn = document.getElementById('amSubmit');
+  if (amBtn) amBtn.onclick = ()=>submitCheckin('morning');
+  const pmBtn = document.getElementById('pmSubmit');
+  if (pmBtn) pmBtn.onclick = ()=>submitCheckin('evening');
+
+  refreshTodayStatus();
+
+  // re-check the evening gate every minute so it unlocks live without a refresh
+  clearInterval(window._pmGateTimer);
+  window._pmGateTimer = setInterval(()=>{
+    if (!eveningOpen && afterTwoPM()) renderClockinForms();
+  }, 60000);
+}
+
+function checkFormValid(prefix){
+  const isAm = prefix === 'am';
+  const type = isAm ? 'morning' : 'evening';
+  const textareaId = isAm ? 'amPriorities' : 'pmAccomplished';
+  const otherFieldId = isAm ? 'amHabit' : 'pmLesson';
+  const hintId = isAm ? 'amHint' : 'pmHint';
+  const btnId = isAm ? 'amSubmit' : 'pmSubmit';
+  const statusEl = document.getElementById(prefix+'Status');
+
+  const textarea = document.getElementById(textareaId);
+  const otherField = document.getElementById(otherFieldId);
+  const hint = document.getElementById(hintId);
+  const btn = document.getElementById(btnId);
+  if (!textarea || !otherField || !btn) return;
+
+  // Already clocked in for this slot today wins over anything typed —
+  // typing in the boxes should never be able to re-open a locked slot.
+  if (todaysCheckinsForMe[type]) {
+    btn.disabled = true;
+    btn.textContent = 'Already clocked in';
+    if (statusEl) { statusEl.textContent = '✓ Done'; statusEl.className = 'slot-status done'; }
+    return;
+  }
+
+  if (statusEl && statusEl.textContent !== 'Open') {
+    statusEl.textContent = 'Open';
+    statusEl.className = 'slot-status open';
+  }
+
+  const n = countItems(textarea.value);
+  const otherFilled = otherField.value.trim().length > 0;
+
+  if (hint) {
+    if (n >= 2) {
+      hint.textContent = `✓ ${n} item${n===1?'':'s'} — 2 pts earned`;
+      hint.style.color = 'var(--green)';
+    } else {
+      hint.textContent = `${n} item${n===1?'':'s'} — add at least 2, one per line`;
+      hint.style.color = 'var(--gray)';
+    }
+  }
+
+  const valid = n >= 2 && otherFilled;
+  btn.disabled = !valid;
+  btn.textContent = valid ? `Clock In — ${isAm?'Morning':'Evening'}` : 'Fill in both fields to clock in';
+}
+
+function refreshTodayStatus(){
+  if (!currentUser || !db) return;
+  const date = todayStr();
+  db.collection('checkins')
+    .where('memberUid','==', currentUser.uid)
+    .where('date','==', date)
+    .get().then(snap=>{
+      todaysCheckinsForMe = {morning:false, evening:false};
+      snap.forEach(doc=>{ todaysCheckinsForMe[doc.data().type] = true; });
+      lockSlot('am','morning'); lockSlot('pm','evening');
+    }).catch(()=>{});
+}
+
+function lockSlot(prefix, type){
+  // Re-runs the same locked/open logic checkFormValid uses, so a slot that
+  // gets freed up by a deletion snaps back to "Open" immediately — not just
+  // "stops locking further", but actively un-sticks a stale locked button.
+  checkFormValid(prefix);
+}
+
+function countItems(text){
+  return text.split('\n').map(l=>l.trim()).filter(l=>l.length>0).length;
+}
+
+function submitCheckin(type){
+  if (!currentUser || !db) { alert('Please log in first.'); return; }
+  if (isSunday()) { alert("It's Sunday — no clock-ins today. Rest up!"); renderClockinForms(); return; }
+  if (type==='evening' && !afterTwoPM()) { alert('Evening clock-in opens at 2:00pm.'); renderClockinForms(); return; }
+  if (todaysCheckinsForMe[type]) { alert("You've already clocked in for this slot today."); renderClockinForms(); return; }
+
+  const btnId = type==='morning' ? 'amSubmit' : 'pmSubmit';
+  const btn = document.getElementById(btnId);
+
+  const late = isLateNow(type);
+  let fields = {}, contentPts = 0;
+
+  if (type==='morning') {
+    const priorities = document.getElementById('amPriorities').value.trim();
+    const habit = document.getElementById('amHabit').value.trim();
+    if (countItems(priorities) < 2 || !habit) { alert('Fill in both fields before clocking in.'); return; }
+    contentPts += 2 + 1;
+    fields = { priorities, habit };
+  } else {
+    const accomplished = document.getElementById('pmAccomplished').value.trim();
+    const lesson = document.getElementById('pmLesson').value.trim();
+    if (countItems(accomplished) < 2 || !lesson) { alert('Fill in both fields before clocking in.'); return; }
+    contentPts += 2 + 1;
+    fields = { accomplished, lesson };
+  }
+
+  // lock the button immediately — belt-and-braces alongside the DB-level guard below
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+  const points = contentPts + (late ? 0 : 2);
+  const date = todayStr();
+  const docId = `${currentUser.uid}_${date}_${type}`; // deterministic ID: the database itself
+                                                        // rejects a second write to this same ID
+                                                        // (see the "allow update: if false" rule),
+                                                        // so no amount of double-clicking, slow
+                                                        // connections, or multiple tabs can create
+                                                        // a duplicate clock-in for the same slot.
+
+  db.collection('checkins').doc(docId).set({
+    memberUid: currentUser.uid,
+    memberName: myDisplayName,
+    type,
+    date,
+    late,
+    points,
+    fields,
+    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+    clientTime: now().toISOString()
+  }).then(()=>{
+    refreshTodayStatus();
+  }).catch(err=>{
+    if (err.code === 'permission-denied') {
+      alert("Looks like you've already clocked in for this slot today.");
+    } else {
+      alert('Could not save: '+err.message);
+      if (btn) { btn.disabled = false; btn.textContent = `Clock In — ${type==='morning'?'Morning':'Evening'}`; }
+    }
+    refreshTodayStatus();
+  });
+}
+
+/* ---------- community log + leaderboard (live) ---------- */
+let allCheckins = [];
+const knownMembers = new Set();
+
+function subscribeCheckins(){
+  if (!db) return;
+  db.collection('checkins').orderBy('timestamp','desc').limit(3000)
+    .onSnapshot(snap=>{
+      allCheckins = [];
+      snap.forEach(doc=>{ allCheckins.push({id:doc.id, ...doc.data()}); knownMembers.add(doc.data().memberName); });
+      updateFilterOptions();
+      renderLog();
+      renderLeaderboard();
+      renderMonthly();
+      refreshTodayStatus();
+    });
+}
+
+function updateFilterOptions(){
+  const sel = document.getElementById('logFilter');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All members</option>' +
+    [...knownMembers].sort().map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+  sel.value = current;
+}
+document.getElementById('logFilter').addEventListener('change', renderLog);
+
+function fmtTime(c){
+  if (c.clientTime) {
+    const d = new Date(c.clientTime);
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  return '';
+}
+
+function minutesSince(c){
+  const t = (c.timestamp && c.timestamp.toDate) ? c.timestamp.toDate() : new Date(c.clientTime);
+  return (Date.now() - t.getTime()) / 60000;
+}
+
+function renderMultiline(text){
+  const lines = (text||'').split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+  if (!lines.length) return '—';
+  return lines.map(l=>`<div style="padding-left:14px;text-indent:-14px;">• ${escapeHtml(l)}</div>`).join('');
+}
+
+function renderLog(){
+  const filter = document.getElementById('logFilter').value;
+  const list = document.getElementById('logList');
+  const rows = allCheckins.filter(c => !filter || c.memberName===filter);
+  if (!rows.length) { list.innerHTML = '<div class="empty">No clock-ins yet. Be the first.</div>'; return; }
+
+  list.innerHTML = rows.map(c=>{
+    const f = c.fields||{};
+    const body = c.type==='morning'
+      ? `<div><b>Priorities:</b></div>${renderMultiline(f.priorities)}<div style="margin-top:6px;"><b>Habit:</b> ${escapeHtml(f.habit||'—')}</div>`
+      : `<div><b>Accomplished:</b></div>${renderMultiline(f.accomplished)}<div style="margin-top:6px;"><b>Lesson:</b> ${escapeHtml(f.lesson||'—')}</div>`;
+    const isMine = currentUser && c.memberUid === currentUser.uid;
+    const withinWindow = minutesSince(c) <= 15;
+    const isAdmin = currentUser && ADMIN_EMAILS.includes((currentUser.email||'').toLowerCase());
+    let deleteControl = '';
+    if (isAdmin) {
+      deleteControl = `<button class="ghost" style="padding:4px 10px;font-size:11px;color:var(--red);border-color:var(--red);" onclick="deleteCheckin('${c.id}', true)">Delete (admin)</button>`;
+    } else if (isMine && withinWindow) {
+      deleteControl = `<button class="ghost" style="padding:4px 10px;font-size:11px;" onclick="deleteCheckin('${c.id}')">Delete</button>`;
+    } else if (isMine) {
+      deleteControl = `<span style="font-size:11px;color:var(--gray);">Locked</span>`;
+    }
+    return `
+      <div class="entry ${c.late?'late':''}">
+        <div class="entry-top">
+          <div>
+            <span class="entry-name">${escapeHtml(c.memberName)}</span>
+            <span class="entry-meta"> · ${c.type==='morning'?'AM':'PM'} · ${fmtTime(c)} · ${escapeHtml(c.date)}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="badge ${c.late?'late':'ontime'}">${c.late?'Late':'On time'}</span>
+            <span class="entry-points">+${c.points} pts</span>
+            ${deleteControl}
+          </div>
+        </div>
+        <div class="entry-body">${body}</div>
+      </div>`;
+  }).join('');
+}
+
+function deleteCheckin(id, isAdminDelete){
+  if (!db) return;
+
+  if (isAdminDelete) {
+    const typed = prompt('Admin delete — this removes someone\'s entry permanently.\n\nType DELETE (all caps) to confirm:');
+    if (typed !== 'DELETE') {
+      if (typed !== null) alert('Typed text didn\'t match "DELETE" — nothing was deleted.');
+      return;
+    }
+  } else {
+    if (!confirm('Delete this clock-in? This can\'t be undone.')) return;
+  }
+
+  db.collection('checkins').doc(id).delete().catch(err=>alert('Could not delete: '+err.message));
+}
+setInterval(()=>{ if (allCheckins.length) renderLog(); }, 30000);
+
+function startOfWeek(){
+  const n = new Date();
+  const day = (n.getDay()+6)%7; // Monday=0
+  const monday = new Date(n);
+  monday.setDate(n.getDate()-day);
+  monday.setHours(0,0,0,0);
+  return monday;
+}
+
+function archivePreviousMonthIfNeeded(){
+  if (!db || !currentUser) return;
+  const now = new Date();
+  const prevMonthDate = new Date(now.getFullYear(), now.getMonth()-1, 1);
+  const y = prevMonthDate.getFullYear(), m = prevMonthDate.getMonth()+1;
+  const key = `${y}-${pad(m)}`;
+  const startStr = `${y}-${pad(m)}-01`;
+  const curMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endStr = `${curMonthStart.getFullYear()}-${pad(curMonthStart.getMonth()+1)}-01`;
+
+  db.collection('archives').doc(key).get().then(doc=>{
+    if (doc.exists) { renderPastWinners(); return; }
+    db.collection('checkins').where('date','>=',startStr).where('date','<',endStr).get().then(snap=>{
+      const totals = {};
+      snap.forEach(d=>{ const c=d.data(); totals[c.memberName] = (totals[c.memberName]||0) + c.points; });
+      const rows = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
+      if (!rows.length) { renderPastWinners(); return; }
+      const topScore = rows[0][1];
+      const winners = rows.filter(r=>r[1]===topScore).map(r=>r[0]);
+      db.collection('archives').doc(key).set({
+        month: key,
+        monthLabel: prevMonthDate.toLocaleDateString('en-US',{month:'long', year:'numeric'}),
+        winners, topScore, totals,
+        archivedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }).then(renderPastWinners);
+    });
+  });
+}
+
+function renderPastWinners(){
+  if (!db) return;
+  const el = document.getElementById('pastWinnersList');
+  if (!el) return;
+  db.collection('archives').orderBy('month','desc').limit(12).get().then(snap=>{
+    if (snap.empty) { el.innerHTML = '<div class="empty">No past months archived yet.</div>'; return; }
+    el.innerHTML = snap.docs.map(d=>{
+      const a = d.data();
+      return `<div class="points-row"><span>${escapeHtml(a.monthLabel)}</span><b>${a.winners.map(escapeHtml).join(' & ')} — ${a.topScore} pts</b></div>`;
+    }).join('');
+  }).catch(()=>{});
+}
+
+function startOfMonth(){
+  const n = new Date();
+  return new Date(n.getFullYear(), n.getMonth(), 1, 0, 0, 0, 0);
+}
+
+function renderMonthly(){
+  const start = startOfMonth();
+  const now = new Date();
+  document.getElementById('monthRangeLabel').textContent =
+    `${start.toLocaleDateString('en-US',{month:'long'})} · so far`;
+
+  const totals = {};
+  allCheckins.forEach(c=>{
+    if (!c.clientTime) return;
+    const d = new Date(c.clientTime);
+    if (d < start) return;
+    totals[c.memberName] = (totals[c.memberName]||0) + c.points;
+  });
+
+  const rows = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
+  const card = document.getElementById('monthCard');
+  if (!rows.length) { card.innerHTML = '<div class="empty">No points logged this month yet.</div>'; return; }
+
+  const topScore = rows[0][1];
+  const winners = rows.filter(r=>r[1]===topScore).map(r=>r[0]);
+
+  const winnerBlock = `
+    <div style="text-align:center;padding:6px 0 22px;border-bottom:1px solid var(--line);margin-bottom:18px;">
+      <div style="font-size:28px;">🏆</div>
+      <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.1em;color:var(--gray);margin:6px 0 4px;">
+        ${winners.length>1 ? 'Leading this month — tied' : 'Leading this month'}
+      </div>
+      <div style="font-family:'Archivo Black',sans-serif;font-size:22px;color:var(--yellow);">
+        ${winners.map(escapeHtml).join(' & ')}
+      </div>
+      <div class="mono" style="color:var(--gray);font-size:13px;margin-top:4px;">${topScore} pts</div>
+    </div>`;
+
+  const list = rows.map(([name,pts],i)=>`
+    <div class="lb-row">
+      <div class="lb-rank ${pts===topScore?'top':''}">${i+1}</div>
+      <div class="lb-name">${escapeHtml(name)}</div>
+      <div class="lb-bar-wrap"><div class="lb-bar" style="width:${(pts/topScore)*100}%"></div></div>
+      <div class="lb-pts">${pts} pts</div>
+    </div>`).join('');
+
+  card.innerHTML = winnerBlock + list;
+}
+
+function renderLeaderboard(){
+  const monday = startOfWeek();
+  const saturday = new Date(monday); saturday.setDate(monday.getDate()+5);
+  document.getElementById('weekRangeLabel').textContent =
+    `Mon ${monday.toLocaleDateString('en-US',{month:'short',day:'numeric'})} – Sat ${saturday.toLocaleDateString('en-US',{month:'short',day:'numeric'})} · out of 60 · Sunday is review day`;
+
+  const totals = {};
+  allCheckins.forEach(c=>{
+    if (!c.clientTime) return;
+    const d = new Date(c.clientTime);
+    if (d < monday) return;
+    totals[c.memberName] = (totals[c.memberName]||0) + c.points;
+  });
+
+  const rows = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
+  const card = document.getElementById('lbCard');
+  if (!rows.length) { card.innerHTML = '<div class="empty">No points logged this week yet.</div>'; return; }
+
+  card.innerHTML = rows.map(([name,pts],i)=>`
+    <div class="lb-row">
+      <div class="lb-rank ${i===0?'top':''}">${i+1}</div>
+      <div class="lb-name">${escapeHtml(name)}</div>
+      <div class="lb-bar-wrap"><div class="lb-bar" style="width:${Math.min((pts/60)*100,100)}%"></div></div>
+      <div class="lb-pts">${pts}/60</div>
+    </div>`).join('');
+}
+
+/* ---------- init ---------- */
+renderIdentity();
+renderClockinForms();
+if (db) subscribeCheckins();
+if (db) renderPastWinners();
+</script>
+
+</body>
+</html>
