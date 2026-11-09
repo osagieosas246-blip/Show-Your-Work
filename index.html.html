@@ -149,6 +149,8 @@
     resize:vertical;
   }
   input[type=text]:focus,textarea:focus{outline:none;border-color:var(--yellow);}
+  input[type=date],input[type=time]{width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;color:var(--white);font-family:'Inter',sans-serif;font-size:14px;padding:11px 13px;color-scheme:dark;}
+  input[type=date]:focus,input[type=time]:focus{outline:none;border-color:var(--yellow);}
   button.primary{
     background:var(--yellow);color:var(--black);border:none;border-radius:100px;
     font-weight:700;font-size:14px;padding:12px 24px;cursor:pointer;margin-top:20px;
@@ -221,6 +223,12 @@
   .cal-dow{font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray);text-align:center;font-weight:700;padding-bottom:2px;}
   .cal-cell{position:relative;aspect-ratio:1/1;min-height:36px;border-radius:8px;background:var(--panel-2);display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;user-select:none;}
   .cal-cell .d{position:absolute;top:3px;left:5px;font-size:9px;color:var(--gray);font-weight:600;font-family:'JetBrains Mono',monospace;}
+  .cal-cell{padding-bottom:7px;box-sizing:border-box;}
+  .cal-cell .dots{position:absolute;bottom:4px;left:0;right:0;display:flex;justify-content:center;gap:4px;}
+  .cal-cell .dot{width:5px;height:5px;border-radius:50%;background:var(--gray);opacity:0.35;display:block;}
+  .cal-cell .dot.g{background:var(--green);opacity:1;}
+  .cal-cell .dot.y{background:var(--yellow);opacity:1;}
+  .cal-cell .dot.r{background:var(--red);opacity:1;}
   .cal-cell.pad{background:transparent;}
   .cal-cell.before,.cal-cell.future{background:transparent;border:1px dashed var(--line);}
   .cal-cell.ontime{color:var(--green);background:rgba(79,212,130,0.10);cursor:pointer;}
@@ -401,6 +409,51 @@
     <h2 style="margin-top:40px;">✅ Approved Members</h2>
     <div class="card" id="approvedMembersList"></div>
 
+    <h2 style="margin-top:40px;">🛠 Fix a day</h2>
+    <p style="color:var(--gray);font-size:14px;margin-top:-6px;">Add a clock-in that never reached the server, for example from the message the member pasted in the group. It's recorded for the day and time you choose and marked "added by admin" in the log.</p>
+    <div class="card" id="fixDayCard">
+      <label style="margin-top:0;">Member</label>
+      <select id="fxMember" style="width:100%;"></select>
+      <div class="grid2">
+        <div><label>Date</label><input type="date" id="fxDate"></div>
+        <div><label>Time they clocked in</label><input type="time" id="fxTime"></div>
+      </div>
+      <label>Which clock-in</label>
+      <select id="fxType" style="width:100%;"><option value="morning">Morning</option><option value="evening">Evening</option></select>
+
+      <label>Paste their WhatsApp message <span style="text-transform:none;font-weight:400;">(optional — fills the form for you)</span></label>
+      <textarea id="fxPaste" rows="4" placeholder="Paste the clock-in message they sent in the group"></textarea>
+      <button type="button" class="ghost" id="fxFill" style="margin-top:8px;">Fill the form from this message</button>
+
+      <div id="fxMorning" style="margin-top:6px;">
+        <label>Today's top priority <span style="text-transform:none;font-weight:400;">(one per line)</span></label>
+        <textarea id="fxPriorities" rows="3"></textarea>
+        <label>Time committing</label><input type="text" id="fxTimeCommitting">
+        <label>Accountability <span style="text-transform:none;font-weight:400;">(optional)</span></label><input type="text" id="fxAccountability">
+      </div>
+
+      <div id="fxEvening" style="margin-top:6px;display:none;">
+        <label>What they planned to do <span style="text-transform:none;font-weight:400;">(optional)</span></label>
+        <textarea id="fxPlanned" rows="2"></textarea>
+        <label>What they completed <span style="text-transform:none;font-weight:400;">(one per line)</span></label>
+        <textarea id="fxAccomplished" rows="3"></textarea>
+        <label>Proof of work: link</label><input type="text" id="fxProofLink">
+        <label>Proof of work: text</label><textarea id="fxProofText" rows="2"></textarea>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:14px;text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--white);font-weight:500;"><input type="checkbox" id="fxAllDone" style="width:16px;height:16px;accent-color:var(--yellow);"> ✅ Completed everything today</label>
+        <label>What they didn't complete</label><textarea id="fxNotCompleted" rows="2"></textarea>
+        <label>Why</label><input type="text" id="fxWhyNot">
+        <label style="display:flex;align-items:center;gap:8px;margin-top:14px;text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--white);font-weight:500;"><input type="checkbox" id="fxDoneForDay" style="width:16px;height:16px;accent-color:var(--yellow);"> 🌙 Done for the day</label>
+        <label>What they're working on</label><textarea id="fxWorkingOn" rows="2"></textarea>
+        <label>What they learned today</label><input type="text" id="fxLesson">
+      </div>
+
+      <label>Count as</label>
+      <select id="fxStatus" style="width:100%;"><option value="auto">Automatic (from the time)</option><option value="ontime">On time</option><option value="late">Late</option></select>
+      <div id="fxPreview" style="font-size:13px;color:var(--gray);margin-top:14px;font-family:'JetBrains Mono',monospace;"></div>
+      <div id="fxMsg" style="font-size:13px;margin-top:10px;"></div>
+      <button type="button" class="primary" id="fxSave">Add this clock-in</button>
+    </div>
+
     <h2 style="margin-top:40px;">🗑 Recycle Bin</h2>
     <p style="color:var(--gray);font-size:14px;margin-top:-6px;">Deleted members (and their whole log) wait here for 3 days so you can restore them. After that they're erased for good.</p>
     <div class="card" id="binList"></div>
@@ -426,10 +479,14 @@ const FIREBASE_CONFIG = {
 const isConfigured = FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith("PASTE_");
 let db = null;
 let auth = null;
+let persistenceOn = false;
 
 if (isConfigured) {
   firebase.initializeApp(FIREBASE_CONFIG);
   db = firebase.firestore();
+  // Keep clock-ins that haven't reached the server yet safely on the device, so a closed
+  // tab or a dropped connection can't lose them — they're sent once the site is open and online.
+  try { db.enablePersistence({ synchronizeTabs: true }).then(()=>{ persistenceOn = true; }).catch(()=>{}); } catch (e) {}
   auth = firebase.auth();
 } else {
   document.getElementById('setupBanner').style.display = 'block';
@@ -513,18 +570,29 @@ function now(){
   return new Date(Date.now() + clockOffsetMs);
 }
 
-function syncServerClock(){
+let CLOCK_SYNC_MAX_RTT = 4000;   // a slower round trip can't be timed reliably
+let CLOCK_SYNC_RETRY_MS = 1500;
+
+// Asks Firebase for the real time and works out how far this device's clock is off.
+// A write that stalls on a weak connection would give a wrong answer, so a slow
+// reading is thrown away and tried once more; if that's slow too, the device clock is used as-is.
+function syncServerClock(attempt){
   if (!db || !currentUser) return Promise.resolve();
+  attempt = attempt || 0;
   const ref = db.collection('members').doc(currentUser.uid);
-  const before = Date.now();
+  const sentAt = Date.now();
+  let ackAt = 0;
   return ref.set({ clockPing: firebase.firestore.FieldValue.serverTimestamp() }, {merge:true})
-    .then(()=> ref.get({source:'server'}))
+    .then(()=>{ ackAt = Date.now(); return ref.get({source:'server'}); })
     .then(doc=>{
       const server = doc.data().clockPing;
-      if (server && server.toMillis) {
-        const roundTrip = Date.now() - before;
-        const serverAtRequest = server.toMillis() - Math.round(roundTrip/2);
-        clockOffsetMs = serverAtRequest - before;
+      const rtt = ackAt - sentAt; // only the write's own round trip matters
+      if (server && server.toMillis && rtt <= CLOCK_SYNC_MAX_RTT) {
+        clockOffsetMs = server.toMillis() - (sentAt + rtt / 2);
+      } else if (attempt < 1) {
+        return new Promise(r => setTimeout(r, CLOCK_SYNC_RETRY_MS)).then(()=> syncServerClock(attempt + 1));
+      } else {
+        clockOffsetMs = 0;
       }
     })
     .catch(()=>{ clockOffsetMs = 0; });
@@ -936,7 +1004,7 @@ function hasProofOfWork(prefix){
 function getMyTodayCheckin(type){
   if (!currentUser) return null;
   const date = todayStr();
-  return allCheckins.find(c => c.memberUid === currentUser.uid && c.date === date && c.type === type) || null;
+  return allCheckins.find(c => !c.pending && c.memberUid === currentUser.uid && c.date === date && c.type === type) || null;
 }
 
 function buildShareMessage(c){
@@ -1060,6 +1128,15 @@ function checkFormValid(prefix){
     return;
   }
 
+  // Sent, but the server hasn't confirmed it yet: stay locked and say so, with no Copy button
+  if (savingNow[type] || myPendingSlot(type)) {
+    btn.disabled = true;
+    btn.textContent = (slowNow[type] || (!savingNow[type] && myPendingSlot(type))) ? 'Still saving… keep this page open' : 'Saving…';
+    const share = document.getElementById(prefix + 'ShareWrap');
+    if (share) share.innerHTML = '';
+    return;
+  }
+
   if (statusEl && statusEl.textContent !== 'Open') {
     statusEl.textContent = 'Open';
     statusEl.className = 'slot-status open';
@@ -1102,7 +1179,7 @@ function refreshTodayStatus(retried){
     .where('date','==', date)
     .get().then(snap=>{
       todaysCheckinsForMe = {morning:false, evening:false};
-      snap.forEach(doc=>{ todaysCheckinsForMe[doc.data().type] = true; });
+      snap.forEach(doc=>{ if (!isPendingDoc(doc)) todaysCheckinsForMe[doc.data().type] = true; });
       lockSlot('am','morning'); lockSlot('pm','evening');
     }).catch(()=>{
       // Right after reconnecting, the network can take a moment to fully
@@ -1121,6 +1198,25 @@ function lockSlot(prefix, type){
 function countItems(text){
   return text.split('\n').map(l=>l.trim()).filter(l=>l.length>0).length;
 }
+
+// A clock-in only counts once the SERVER has confirmed it. Until then it is "saving".
+const savingNow = { morning: false, evening: false };
+const slowNow = { morning: false, evening: false };
+let SLOW_SAVE_MS = 6000;
+
+function isPendingDoc(doc){ return !!(doc && doc.metadata && doc.metadata.hasPendingWrites); }
+
+// is there a clock-in of mine for today's slot that's still waiting to reach the server?
+function myPendingSlot(type){
+  if (!currentUser) return false;
+  const date = todayStr();
+  return allCheckins.some(c => c.pending && c.memberUid === currentUser.uid && c.date === date && c.type === type);
+}
+
+// leaving mid-save would lose it if this browser can't keep it safe, so warn first
+window.addEventListener('beforeunload', e=>{
+  if ((savingNow.morning || savingNow.evening) && !persistenceOn) { e.preventDefault(); e.returnValue = ''; }
+});
 
 function submitCheckin(type, nameChecked){
   if (!currentUser || !db) { alert('Please log in first.'); return; }
@@ -1185,6 +1281,16 @@ function submitCheckin(type, nameChecked){
                                                         // connections, or multiple tabs can create
                                                         // a duplicate clock-in for the same slot.
 
+  savingNow[type] = true;
+  slowNow[type] = false;
+  const slowTimer = setTimeout(()=>{
+    if (!savingNow[type]) return;
+    slowNow[type] = true;
+    const b = document.getElementById(prefix + 'Submit');
+    if (b) b.textContent = 'Still saving… keep this page open';
+  }, SLOW_SAVE_MS);
+  const finish = ()=>{ clearTimeout(slowTimer); savingNow[type] = false; slowNow[type] = false; };
+
   db.collection('checkins').doc(docId).set({
     memberUid: currentUser.uid,
     memberName: myDisplayName,
@@ -1196,8 +1302,13 @@ function submitCheckin(type, nameChecked){
     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
     clientTime: now().toISOString()
   }).then(()=>{
+    // only now has the server confirmed it
+    todaysCheckinsForMe[type] = true;
+    finish();
+    lockSlot(prefix, type);
     refreshTodayStatus();
   }).catch(err=>{
+    finish();
     if (err.code === 'permission-denied') {
       alert("Looks like you've already clocked in for this slot today.");
     } else {
@@ -1207,6 +1318,199 @@ function submitCheckin(type, nameChecked){
     refreshTodayStatus();
   });
 }
+
+/* ---------- admin: fix a day (add a clock-in that never reached the server) ---------- */
+const fxEl = id => document.getElementById(id);
+
+// Reads a clock-in message exactly as the site writes it for sharing (also copes with a
+// WhatsApp "[date, time] Name:" prefix in front of the first line).
+function parseShareMessage(raw){
+  const lines = String(raw || '').replace(/\r/g, '').split('\n');
+  const hi = lines.findIndex(l => /just clocked in/i.test(l));
+  if (hi < 0) return null;
+  const header = lines[hi];
+  const type = /evening/i.test(header) ? 'evening' : (/morning/i.test(header) ? 'morning' : null);
+  if (!type) return null;
+  const times = header.match(/\d{1,2}:\d{2}/g);
+  const time = times ? times[times.length - 1] : '';
+  const nm = header.match(/✅\s*(.+?)\s+just clocked in/i);
+  const name = nm ? nm[1].trim() : '';
+
+  const LABELS = [
+    ["today's top priority:", 'priorities'], ['what i completed:', 'accomplished'],
+    ["didn't complete:", 'notCompleted'], ['working on:', 'workingOn'], ['proof of work:', 'proof'],
+    ['time committing:', 'timeCommitting'], ['accountability:', 'accountability'],
+    ['planned:', 'planned'], ['learned:', 'lesson'], ['why:', 'whyNot'], ['link:', 'proofLink']
+  ];
+  const acc = { priorities: [], accomplished: [], notCompleted: [], workingOn: [], planned: [], proof: [] };
+  const f = {};
+  let cur = null;
+  for (let i = hi + 1; i < lines.length; i++) {
+    const line = lines[i].replace(/[’‘]/g, "'").trim();
+    if (/^see it on syw/i.test(line)) break;
+    if (line === '') { cur = null; continue; }
+    if (/^✅\s*completed everything/i.test(line)) { f.allDone = true; cur = null; continue; }
+    if (/^🌙\s*done for the day/i.test(line)) { f.doneForDay = true; cur = null; continue; }
+    const lab = LABELS.find(([label]) => line.toLowerCase().startsWith(label));
+    if (lab) {
+      const key = lab[1];
+      const rest = line.slice(lab[0].length).trim();
+      if (['timeCommitting', 'accountability', 'lesson', 'whyNot', 'proofLink'].includes(key)) { f[key] = rest; cur = null; }
+      else if (key === 'planned') { acc.planned = rest ? [rest] : []; cur = 'planned'; }
+      else { cur = key; }
+      continue;
+    }
+    if (cur === 'planned' || cur === 'proof') acc[cur].push(line);
+    else if (cur) acc[cur].push(line.replace(/^-\s?/, '')); // the message adds one "- " per item; take just that off
+  }
+  const fields = type === 'morning'
+    ? { priorities: acc.priorities.join('\n'), timeCommitting: f.timeCommitting || '', accountability: f.accountability || '' }
+    : { planned: acc.planned.join('\n'), accomplished: acc.accomplished.join('\n'), lesson: f.lesson || '',
+        proofLink: f.proofLink || '', proofText: acc.proof.join('\n'), allDone: !!f.allDone,
+        notCompleted: acc.notCompleted.join('\n'), whyNot: f.whyNot || '', doneForDay: !!f.doneForDay, workingOn: acc.workingOn.join('\n') };
+  return { type, time, name, fields };
+}
+
+function fxToggleSlot(){
+  const t = fxEl('fxType').value;
+  fxEl('fxMorning').style.display = t === 'morning' ? 'block' : 'none';
+  fxEl('fxEvening').style.display = t === 'evening' ? 'block' : 'none';
+}
+
+let fxMemberSig = '';
+function refreshFixDayMembers(){
+  const sel = fxEl('fxMember');
+  if (!sel) return;
+  const list = Object.values(adminMembers).filter(m => m.approved).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const sig = list.map(m => m.uid + ':' + m.name).join('|');
+  if (sig !== fxMemberSig) {
+    const keep = sel.value;
+    sel.innerHTML = '<option value="">Choose a member…</option>' + list.map(m => `<option value="${escapeHtml(m.uid)}">${escapeHtml(m.name)}</option>`).join('');
+    if (keep && list.some(m => m.uid === keep)) sel.value = keep;
+    fxMemberSig = sig;
+  }
+  const dateEl = fxEl('fxDate');
+  if (!dateEl.value) dateEl.value = addDays(todayStr(), -1);
+  dateEl.max = todayStr();
+}
+
+const FX_TEXT_IDS = ['fxPriorities','fxTimeCommitting','fxAccountability','fxPlanned','fxAccomplished','fxProofLink','fxProofText','fxNotCompleted','fxWhyNot','fxWorkingOn','fxLesson'];
+function fxClearFields(){
+  FX_TEXT_IDS.forEach(id => { fxEl(id).value = ''; });
+  fxEl('fxAllDone').checked = false;
+  fxEl('fxDoneForDay').checked = false;
+}
+
+// Works out the record from the form, or says what's missing
+function fxCompute(){
+  const uid = fxEl('fxMember').value;
+  const member = adminMembers[uid];
+  if (!member) return { error: 'Choose a member.' };
+  const date = fxEl('fxDate').value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'Choose the date.' };
+  if (date > todayStr()) return { error: "That date hasn't happened yet." };
+  const [y, mo, d] = date.split('-').map(Number);
+  if (new Date(y, mo - 1, d).getDay() === 0) return { error: 'Sundays are rest days, so there are no clock-ins.' };
+  const tm = /^(\d{1,2}):(\d{2})$/.exec(fxEl('fxTime').value);
+  if (!tm) return { error: 'Enter the time they clocked in.' };
+  const hh = +tm[1], mm = +tm[2];
+  const type = fxEl('fxType').value;
+
+  let fields, main, single;
+  if (type === 'morning') {
+    fields = { priorities: fxEl('fxPriorities').value.trim(), timeCommitting: fxEl('fxTimeCommitting').value.trim(), accountability: fxEl('fxAccountability').value.trim() };
+    main = fields.priorities; single = fields.timeCommitting;
+    if (countItems(main) < 1) return { error: 'Add at least one priority.' };
+  } else {
+    const allDone = fxEl('fxAllDone').checked, doneForDay = fxEl('fxDoneForDay').checked;
+    fields = {
+      planned: fxEl('fxPlanned').value.trim(), accomplished: fxEl('fxAccomplished').value.trim(), lesson: fxEl('fxLesson').value.trim(),
+      proofLink: fxEl('fxProofLink').value.trim(), proofText: fxEl('fxProofText').value.trim(),
+      allDone, notCompleted: allDone ? '' : fxEl('fxNotCompleted').value.trim(), whyNot: allDone ? '' : fxEl('fxWhyNot').value.trim(),
+      doneForDay, workingOn: doneForDay ? '' : fxEl('fxWorkingOn').value.trim()
+    };
+    main = fields.accomplished; single = fields.lesson;
+    if (countItems(main) < 1) return { error: 'Add what they completed.' };
+  }
+
+  const mode = fxEl('fxStatus').value;
+  const cutoff = type === 'morning' ? (8 * 60 + 10) : (20 * 60 + 10);
+  const late = mode === 'ontime' ? false : mode === 'late' ? true : (hh * 60 + mm > cutoff);
+  // same scoring as a normal clock-in: 2 for a list of two or more, 1 for the key field, 2 for being on time
+  const points = (countItems(main) >= 2 ? 2 : 0) + (single ? 1 : 0) + (late ? 0 : 2);
+
+  const when = new Date(y, mo - 1, d, hh, mm);
+  const record = {
+    memberUid: uid, memberName: member.name, type, date, late, points, fields,
+    timestamp: firebase.firestore.Timestamp.fromDate(when),
+    clientTime: when.toISOString(),
+    addedByAdmin: true
+  };
+  const dayLabel = when.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const summary = `${member.name} · ${dayLabel} · ${type === 'morning' ? 'Morning' : 'Evening'} ${pad(hh)}:${pad(mm)} · ${late ? 'Late' : 'On time'} · ${points} pts`;
+  return { record, docId: `${uid}_${date}_${type}`, summary };
+}
+
+function fxUpdatePreview(){
+  const r = fxCompute();
+  fxEl('fxPreview').textContent = r.error ? r.error : 'Will record: ' + r.summary;
+}
+
+function fxFillFromMessage(){
+  const msg = fxEl('fxMsg');
+  const parsed = parseShareMessage(fxEl('fxPaste').value);
+  if (!parsed) { msg.style.color = 'var(--red)'; msg.textContent = "Couldn't find a clock-in message in that text. Paste the whole message, starting from the '✅ … just clocked in' line."; return; }
+  fxClearFields();
+  fxEl('fxType').value = parsed.type;
+  fxToggleSlot();
+  if (parsed.time) { const [h, m] = parsed.time.split(':'); fxEl('fxTime').value = `${pad(+h)}:${m}`; }
+  const f = parsed.fields;
+  Object.keys(f).forEach(k => {
+    const el = fxEl('fx' + k.charAt(0).toUpperCase() + k.slice(1));
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = !!f[k]; else el.value = f[k];
+  });
+  if (parsed.name) {
+    const hit = Object.values(adminMembers).find(m => m.approved && (m.name || '').toLowerCase() === parsed.name.toLowerCase());
+    if (hit) fxEl('fxMember').value = hit.uid;
+  }
+  fxUpdatePreview();
+  msg.style.color = 'var(--green)';
+  msg.textContent = 'Filled from the message. Check the member and the date, then add it.';
+}
+
+function fxSave(){
+  if (!db) return;
+  const msg = fxEl('fxMsg');
+  msg.style.color = 'var(--red)';
+  msg.textContent = '';
+  const r = fxCompute();
+  if (r.error) { msg.textContent = r.error; return; }
+  openConfirmModal({
+    title: 'Add this clock-in?',
+    bodyHtml: `<p style="margin:0 0 10px;color:var(--white);">${escapeHtml(r.summary)}</p>
+      <p style="margin:0;color:var(--gray);font-size:12.5px;">It counts in their calendar, the log and the leaderboards, and shows as "added by admin". You can delete it from the Community Log if you change your mind.</p>`,
+    confirmLabel: 'Add clock-in',
+    danger: false,
+    requireText: null,
+    onConfirm: async ()=>{
+      const existing = await db.collection('checkins').doc(r.docId).get({ source: 'server' });
+      if (existing.exists) throw { userMessage: `${r.record.memberName} already has ${r.record.type === 'morning' ? 'a morning' : 'an evening'} clock-in on that day. Delete it from the Community Log first if you want to replace it.` };
+      await db.collection('checkins').doc(r.docId).set(r.record);
+      fxClearFields();
+      fxEl('fxPaste').value = '';
+      fxEl('fxTime').value = '';
+      fxUpdatePreview();
+      msg.style.color = 'var(--green)';
+      msg.textContent = 'Added: ' + r.summary;
+    }
+  });
+}
+
+fxEl('fixDayCard').addEventListener('input', fxUpdatePreview);
+fxEl('fixDayCard').addEventListener('change', e => { if (e.target.id === 'fxType') fxToggleSlot(); fxUpdatePreview(); });
+fxEl('fxFill').addEventListener('click', fxFillFromMessage);
+fxEl('fxSave').addEventListener('click', fxSave);
 
 /* ---------- community log + leaderboard (live) ---------- */
 let allCheckins = [];
@@ -1330,6 +1634,7 @@ function renderAdminLists(){
   const byName = (a, b) => (a.name || '').localeCompare(b.name || '');
   renderPendingMembers(all.filter(m => !m.approved && match(m)).map(prep).sort(byName));
   renderApprovedMembers(all.filter(m => m.approved && match(m)).map(prep).sort(byName));
+  refreshFixDayMembers();
 }
 document.getElementById('adminSearch').addEventListener('input', renderAdminLists);
 
@@ -1402,7 +1707,7 @@ const purgingNow = new Set();
 function deleteMember(uid){
   const m = adminMembers[uid];
   if (!m || !db || isAdminEmail(m.email)) return;
-  db.collection('checkins').where('memberUid', '==', uid).get().then(snap=>{
+  db.collection('checkins').where('memberUid', '==', uid).get({ source: 'server' }).then(snap=>{
     const n = snap.size;
     openConfirmModal({
       title: `Delete ${m.name}?`,
@@ -1426,7 +1731,7 @@ function deleteMember(uid){
 // the copies are safe, and delete the profile last. If anything fails midway, nothing
 // is lost and the same action can simply be run again.
 async function moveMemberToBin(uid, m, checkinDocs){
-  const profileSnap = await db.collection('members').doc(uid).get();
+  const profileSnap = await db.collection('members').doc(uid).get({ source: 'server' });
   const member = profileSnap.exists ? profileSnap.data() : { name: m.name, email: m.email, approved: m.approved };
   const removedAtMs = now().getTime();
   const binRef = db.collection('recycleBin').doc(uid);
@@ -1474,7 +1779,7 @@ async function purgeBinItem(uid){
   purgingNow.add(uid);
   try {
     const ref = db.collection('recycleBin').doc(uid);
-    const snap = await ref.collection('checkins').get();
+    const snap = await ref.collection('checkins').get({ source: 'server' });
     const docs = snap.docs;
     for (let i = 0; i < docs.length; i += 400) {
       const batch = db.batch();
@@ -1535,10 +1840,10 @@ function restoreMember(uid){
 
 async function restoreFromBin(uid){
   const ref = db.collection('recycleBin').doc(uid);
-  const pSnap = await ref.get();
+  const pSnap = await ref.get({ source: 'server' });
   if (!pSnap.exists) throw { userMessage: 'That item is no longer in the bin.' };
   const p = pSnap.data();
-  const cSnap = await ref.collection('checkins').get();
+  const cSnap = await ref.collection('checkins').get({ source: 'server' });
   const docs = cSnap.docs;
   for (let i = 0; i < docs.length; i += 400) {
     const batch = db.batch();
@@ -1566,10 +1871,10 @@ function eraseBinItem(uid){
 function subscribeCheckins(){
   if (!db) return;
   db.collection('checkins').orderBy('timestamp','desc').limit(CHECKIN_LIMIT)
-    .onSnapshot(snap=>{
+    .onSnapshot({ includeMetadataChanges: true }, snap=>{
       allCheckins = [];
       knownMembers.clear();
-      snap.forEach(doc=>{ allCheckins.push({id:doc.id, ...doc.data()}); });
+      snap.forEach(doc=>{ allCheckins.push({id:doc.id, ...doc.data(), pending: isPendingDoc(doc)}); });
       uidNames = bestNameMap(allCheckins);
       allCheckins.forEach(c=> knownMembers.add(personName(c)));
       updateFilterOptions();
@@ -1684,12 +1989,13 @@ function renderLog(){
         <div class="entry-top">
           <div>
             <span class="entry-name">${escapeHtml(personName(c))}</span>
-            <span class="entry-meta"> · ${fmtType(c.type)} · ${fmtTime(c)} · ${fmtDate(c.date)}</span>
+            <span class="entry-meta"> · ${fmtType(c.type)} · ${fmtTime(c)} · ${fmtDate(c.date)}${c.addedByAdmin ? ' · ✎ added by admin' : ''}</span>
           </div>
           <div style="display:flex;align-items:center;gap:10px;">
+            ${c.pending ? '<span class="badge late">⏳ Saving…</span>' : ''}
             <span class="badge ${c.late?'late':'ontime'}">${c.late?'Late':'On time'}</span>
             <span class="entry-points">+${c.points} pts</span>
-            ${deleteControl}
+            ${c.pending ? '' : deleteControl}
           </div>
         </div>
         <div class="entry-body">${body}</div>
@@ -1733,9 +2039,9 @@ function archivePreviousMonthIfNeeded(){
   const curMonthStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1);
   const endStr = `${curMonthStart.getFullYear()}-${pad(curMonthStart.getMonth()+1)}-01`;
 
-  db.collection('archives').doc(key).get().then(doc=>{
+  db.collection('archives').doc(key).get({ source: 'server' }).then(doc=>{
     if (doc.exists) { renderPastWinners(); return; }
-    db.collection('checkins').where('date','>=',startStr).where('date','<',endStr).get().then(snap=>{
+    db.collection('checkins').where('date','>=',startStr).where('date','<',endStr).get({ source: 'server' }).then(snap=>{
       const totals = {};
       const monthDocs = [];
       snap.forEach(d=> monthDocs.push(d.data()));
@@ -1859,7 +2165,7 @@ function buildDayMap(checkins){
   const map = {};
   checkins.forEach(c=>{
     if (!c.date) return;
-    (map[c.date] = map[c.date] || {})[c.type] = { late: !!c.late };
+    (map[c.date] = map[c.date] || {})[c.type] = { late: !!c.late, time: fmtTime(c) };
   });
   return map;
 }
@@ -1881,13 +2187,20 @@ function classifyDay(dateStr, dow, entry, startDate, today){
   return { cls: 'late', mark: '✓' };
 }
 
+// two small dots under each day: left = morning, right = evening
+function dotsHtml(entry, info){
+  if (info.cls === 'future' || info.cls === 'before' || info.cls === 'rest') return '';
+  const dot = s => s ? (s.late ? 'y' : 'g') : (info.cls === 'pending' ? '' : 'r');
+  return `<span class="dots"><i class="dot ${dot(entry && entry.morning)}"></i><i class="dot ${dot(entry && entry.evening)}"></i></span>`;
+}
+
 function dayDetailText(dateStr, entry, info){
   const [y, mo, d] = dateStr.split('-').map(Number);
   const label = new Date(y, mo - 1, d).toLocaleDateString('en-US', { weekday:'long', month:'short', day:'numeric' });
   if (info.cls === 'future') return `${label} — hasn't happened yet`;
   if (info.cls === 'before') return `${label} — before their first clock-in`;
   if (info.cls === 'rest') return `${label} — rest day`;
-  const slot = (name, s) => s ? `${name}: ${s.late ? 'late' : 'on time'}` : `${name}: ${info.cls === 'pending' ? 'not yet' : 'missed'}`;
+  const slot = (name, s) => s ? `${name}: ${s.late ? 'late' : 'on time'}${s.time ? ' (' + s.time + ')' : ''}` : `${name}: ${info.cls === 'pending' ? 'not yet' : 'missed'}`;
   return `${label} — ${slot('Morning', entry && entry.morning)} · ${slot('Evening', entry && entry.evening)}`;
 }
 
@@ -1928,7 +2241,7 @@ function renderCalendar(id){
     const info = classifyDay(dateStr, dow, entry, startDate, today);
     if (counts[info.cls] !== undefined) counts[info.cls]++;
     const cls = `cal-cell ${info.cls}${dateStr === today ? ' today' : ''}${st.selected === dateStr ? ' sel' : ''}`;
-    cells += `<div class="${cls}" title="${escapeHtml(dayDetailText(dateStr, entry, info))}" onclick="calSelect('${id}','${dateStr}')"><span class="d">${d}</span>${info.mark}</div>`;
+    cells += `<div class="${cls}" title="${escapeHtml(dayDetailText(dateStr, entry, info))}" onclick="calSelect('${id}','${dateStr}')"><span class="d">${d}</span>${info.mark}${dotsHtml(entry, info)}</div>`;
   }
 
   const dowHead = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(n => `<div class="cal-dow">${n}</div>`).join('');
@@ -1953,6 +2266,7 @@ function renderCalendar(id){
       <span><b style="color:var(--green);">✓</b>On time (morning + evening)</span>
       <span><b style="color:var(--yellow);">✓</b>Late, or only one slot</span>
       <span><b style="color:var(--red);">✕</b>Missed</span>
+      <span><b style="color:var(--gray);">● ●</b>Morning · Evening</span>
     </div>`;
 }
 
@@ -1974,9 +2288,9 @@ function startMyCalendar(){
   myCalUid = currentUser.uid;
   const wrap = document.getElementById('myCalendarWrap');
   if (wrap) wrap.innerHTML = '<div class="card" style="margin-top:20px;"><h3>📅 My attendance</h3><div id="myCal"></div></div>';
-  myCalUnsub = db.collection('checkins').where('memberUid', '==', currentUser.uid).onSnapshot(snap=>{
+  myCalUnsub = db.collection('checkins').where('memberUid', '==', currentUser.uid).onSnapshot({ includeMetadataChanges: true }, snap=>{
     const list = [];
-    snap.forEach(d => list.push(d.data()));
+    snap.forEach(d => { if (!isPendingDoc(d)) list.push(d.data()); });
     calState('myCal').checkins = list;
     renderCalendar('myCal');
   }, ()=>{});
@@ -2073,7 +2387,7 @@ function renderCalendarList(people){
   const byUid = {};
   let oldest = null;
   allCheckins.forEach(c => {
-    if (!c.date) return;
+    if (!c.date || c.pending) return;
     if (!oldest || c.date < oldest) oldest = c.date;
     if (c.memberUid) (byUid[c.memberUid] = byUid[c.memberUid] || []).push(c);
   });
@@ -2099,9 +2413,9 @@ function selectCalendarPerson(uid){
   viewCalUid = uid;
   delete calendars.viewCal;
   document.getElementById('viewCal').innerHTML = '<div class="empty">Loading…</div>';
-  viewCalUnsub = db.collection('checkins').where('memberUid', '==', uid).onSnapshot(snap=>{
+  viewCalUnsub = db.collection('checkins').where('memberUid', '==', uid).onSnapshot({ includeMetadataChanges: true }, snap=>{
     const list = [];
-    snap.forEach(d => list.push(d.data()));
+    snap.forEach(d => { if (!isPendingDoc(d)) list.push(d.data()); });
     calState('viewCal').checkins = list;
     renderCalendar('viewCal');
   }, ()=>{});
